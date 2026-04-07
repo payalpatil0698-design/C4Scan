@@ -1,0 +1,61 @@
+# Environments
+.env
+.env.local
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs and Databases
+*.log
+*.sqlite3
+*.db
+instance/
+backend/cancer_scan.db
+
+# File Uploads / Temporaries
+uploads/
+tmp/
+test_assets/
+*.jpg
+*.png
+*.jpeg
+*.dcm
+
+# AI Models (Optional: Comment out if you want to push your .h5 models to Github)
+*.h5
+*.keras
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
