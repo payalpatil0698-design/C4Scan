@@ -16,11 +16,18 @@ import json
 import google.generativeai as genai
 
 # Logging Configuration
-logging.basicConfig(
-    filename='oncoai_system.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s'
-)
+if os.environ.get('VERCEL'):
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s: %(message)s'
+    )
+else:
+    logging.basicConfig(
+        filename='oncoai_system.log',
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s: %(message)s'
+    )
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
