@@ -15,7 +15,7 @@ class PredictionService:
         if model_path is None:
             # Default to path relative to this file
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            self.model_path = os.path.join(base_dir, 'cancer_model.h5')
+            self.model_path = os.path.join(base_dir, 'backend', 'models', 'cancer_model_balanced.h5')
         else:
             self.model_path = model_path
             
@@ -36,23 +36,29 @@ class PredictionService:
                 import tensorflow as tf
                 tf.get_logger().setLevel('ERROR')
                 try:
+                    # Our balanced model includes a Rescaling layer at the top
                     self.model = tf.keras.models.load_model(self.model_path, compile=False)
-                    print(f"Model loaded conventionally from {self.model_path}")
+                    print(f"Balanced Model loaded successfully from {self.model_path}")
                 except Exception as e:
-                    print(f"Conventional load failed due to Keras 3 format issue ({e}). Rebuilding architecture...")
+                    print(f"Direct load failed: {e}. Attempting architecture rebuild...")
                     try:
                         base_model = tf.keras.applications.EfficientNetB0(
                             include_top=False, weights=None, input_shape=(224, 224, 3)
                         )
-                        x = tf.keras.layers.GlobalAveragePooling2D()(base_model.output)
-                        x = tf.keras.layers.Dense(128, activation='relu')(x)
-                        x = tf.keras.layers.Dropout(0.2)(x)
-                        outputs = tf.keras.layers.Dense(4, activation='softmax')(x) 
-                        self.model = tf.keras.Model(inputs=base_model.input, outputs=outputs)
-                        self.model.load_weights(self.model_path)
-                        print("Weights successfully loaded into rebuilt architecture.")
+                        model = tf.keras.models.Sequential([
+                            tf.keras.layers.Input(shape=(224, 224, 3)),
+                            base_model,
+                            tf.keras.layers.GlobalAveragePooling2D(),
+                            tf.keras.layers.BatchNormalization(),
+                            tf.keras.layers.Dropout(0.3),
+                            tf.keras.layers.Dense(256, activation='relu'),
+                            tf.keras.layers.Dense(4, activation='softmax')
+                        ])
+                        model.load_weights(self.model_path)
+                        self.model = model
+                        print("Weights successfully loaded into manual balanced architecture.")
                     except Exception as rebuild_e:
-                        print(f"Failed completely: {rebuild_e}")
+                        print(f"Rebuild failed: {rebuild_e}")
             else:
                 print(f"Model file not found at {self.model_path}")
                 
@@ -120,7 +126,6 @@ class PredictionService:
             return None, 0.0, None, None, None
 
         img = cv2.resize(img, (224, 224))
-        img = img / 255.0
         img = np.expand_dims(img, axis=0)
 
         # Pure inference from custom .h5 model
@@ -137,6 +142,8 @@ class PredictionService:
             print(f"Prediction error: {e}")
             return None, 0.0, None, None, None
             
+        # No demo mode constraints, output pure model inference.
+            
         severity = self.calculate_severity(label, confidence)
         recommendation = self.get_clinical_recommendation(label, severity, user_city, nearby_doctors)
         
@@ -145,16 +152,28 @@ class PredictionService:
 
         heatmap_path = None
         try:
-            conv_layers = [l.name for l in model1.layers if 'conv' in l.name.lower()]
+            # For Sequential models with Functional base, we need to access the base model layers
+            all_layers = []
+            for layer in model1.layers:
+                if hasattr(layer, 'layers'): # It's a nested model
+                    all_layers.extend(layer.layers)
+                else:
+                    all_layers.append(layer)
+            
+            conv_layers = [l.name for l in all_layers if 'conv' in l.name.lower()]
             if conv_layers:
-                from backend.app import app
                 last_conv = conv_layers[-1]
                 heatmap = self.make_gradcam_heatmap(img, model1, last_conv, pred_index=class_idx)
-                heatmap_filename = f"cam_{os.path.basename(img_path)}.jpg"
-                heatmap_dir = app.config['UPLOAD_FOLDER'] 
-                heatmap_path = os.path.join(heatmap_dir, heatmap_filename)
                 
-                viz_img = (img[0] * 255).astype(np.uint8)
+                # Make sure the image path has a valid extension
+                base_name = os.path.basename(img_path)
+                name, ext = os.path.splitext(base_name)
+                heatmap_filename = f"cam_{name}.jpg"
+                
+                heatmap_path = os.path.join(os.path.dirname(img_path), heatmap_filename)
+                
+                # img input is already 0-255 scale
+                viz_img = img[0].astype(np.uint8)
                 viz_img = cv2.cvtColor(viz_img, cv2.COLOR_RGB2BGR)
                 self.save_gradcam(viz_img, heatmap, heatmap_path)
         except Exception as e:

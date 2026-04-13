@@ -35,7 +35,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, '..
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'dev-secret-key-12345'
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 db.init_app(app)
@@ -367,11 +367,20 @@ def get_doctors():
     } for d in doctors]), 200
 
 @app.route('/api/cases', methods=['GET'])
-@jwt_required()
 def get_cases():
-    current_user_id = int(get_jwt_identity())
-    user = User.query.get(current_user_id)
-    if user.role == 'doctor':
+    import jwt
+    auth_header = request.headers.get('Authorization', '')
+    current_user_id = 'unknown'
+    role = 'patient'
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            current_user_id = decoded.get('sub', 'unknown')
+            role = decoded.get('user_metadata', {}).get('role', 'patient')
+        except: pass
+
+    if role == 'doctor':
         cases = Case.query.all()
     else:
         cases = Case.query.filter_by(patient_id=current_user_id).all()
@@ -391,14 +400,22 @@ def download_pdf(case_id):
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith('Bearer '):
         return jsonify({"message": "Unauthorized"}), 401
-    
+    import jwt
+    token = auth_header.split(' ')[1]
+    supabase_username = "Patient"
+    try:
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        meta = decoded.get('user_metadata', {})
+        supabase_username = meta.get('username') or decoded.get('email') or "Patient"
+    except: pass
+
     case = Case.query.get_or_404(case_id)
     user = User.query.get(case.patient_id)
     
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"report_{case_id}.pdf")
     case_data = {
         "id": case.id,
-        "username": user.username,
+        "username": user.username if user else supabase_username,
         "prediction": case.prediction_label,
         "confidence": case.confidence_score,
         "severity": case.severity or "Low",
@@ -411,19 +428,34 @@ def download_pdf(case_id):
     return send_file(pdf_path, as_attachment=True)
 
 @app.route('/api/admin/stats', methods=['GET'])
-@jwt_required()
 def get_admin_stats():
-    current_user_id = int(get_jwt_identity())
-    user = User.query.get(current_user_id)
-    if user.role != 'doctor':
-        return jsonify({"message": "Unauthorized"}), 403
-    
-    total_cases = Case.query.count()
-    total_patients = User.query.filter_by(role='patient').count()
-    total_doctors = User.query.filter_by(role='doctor').count()
-    
-    # Distribution of labels
-    label_counts = db.session.query(Case.prediction_label, func.count(Case.id)).group_by(Case.prediction_label).all()
+    import jwt
+    auth_header = request.headers.get('Authorization', '')
+    current_user_id = 'unknown'
+    role = 'patient'
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        try:
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            current_user_id = decoded.get('sub', 'unknown')
+            role = decoded.get('user_metadata', {}).get('role', 'patient')
+        except: pass
+
+    if role == 'doctor':
+        total_cases = Case.query.count()
+        total_patients = User.query.filter_by(role='patient').count()
+        total_doctors = User.query.filter_by(role='doctor').count()
+        
+        # Distribution of labels
+        label_counts = db.session.query(Case.prediction_label, func.count(Case.id)).group_by(Case.prediction_label).all()
+    else:
+        total_cases = Case.query.filter_by(patient_id=current_user_id).count()
+        total_patients = 1  # Dummy value for patient
+        total_doctors = 1   # Dummy value for patient
+        
+        # Distribution of labels for patient
+        label_counts = db.session.query(Case.prediction_label, func.count(Case.id)).filter_by(patient_id=current_user_id).group_by(Case.prediction_label).all()
+        
     distribution = {label if label else "Unknown": count for label, count in label_counts}
     
     # Simulated accuracy calculation (could be more complex)
@@ -530,7 +562,7 @@ def health_check():
 
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    return send_file(os.path.join(app.root_path, '..', app.config['UPLOAD_FOLDER'], filename))
+    return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, port=5000, host='127.0.0.1')

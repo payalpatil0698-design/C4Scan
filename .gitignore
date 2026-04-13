@@ -51,8 +51,8 @@ test_assets/
 *.dcm
 
 # AI Models (Optional: Comment out if you want to push your .h5 models to Github)
-*.h5
-*.keras
+# *.h5
+# *.keras
 
 # IDE / OS
 .vscode/

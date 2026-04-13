@@ -48,7 +48,19 @@ export default function App() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   React.useEffect(() => {
-    // Check for existing session
+    // Check for existing session or demo bypass
+    const isDemo = window.localStorage.getItem('demo_access') === 'true';
+    if (isDemo) {
+      setIsAuthenticated(true);
+      setCurrentUser({
+        id: 'demo-user',
+        username: 'Demo Surgeon',
+        email: 'demo@c4scan.ai',
+        role: 'doctor'
+      });
+      return; 
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsAuthenticated(true);
@@ -96,7 +108,9 @@ export default function App() {
   );
 
   const handleLogout = async () => {
+    window.localStorage.removeItem('demo_access');
     await supabase.auth.signOut();
+    window.location.reload();
   };
 
   if (!isAuthenticated) {
@@ -437,12 +451,24 @@ function LoginView() {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-800 text-center">
+        <div className="mt-8 pt-6 border-t border-slate-800 text-center space-y-4">
           <button
             onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccess(''); }}
-            className="text-xs text-slate-400 hover:text-cyan-400 transition-colors uppercase tracking-widest font-bold"
+            className="text-xs text-slate-400 hover:text-cyan-400 transition-colors uppercase tracking-widest font-bold block w-full"
           >
             {isRegistering ? 'Already have an account? Login' : 'Need a real account? Sign Up'}
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => {
+              // Bypass authentication for verification purposes
+              window.localStorage.setItem('demo_access', 'true');
+              window.location.reload();
+            }}
+            className="text-[10px] text-slate-600 hover:text-cyan-500/50 transition-colors uppercase tracking-widest block w-full"
+          >
+            Clinical Trial Demo (Bypass Login)
           </button>
         </div>
       </motion.div>

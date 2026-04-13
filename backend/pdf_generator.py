@@ -43,7 +43,8 @@ def generate_patient_pdf(case_data, output_path):
     elements.append(Spacer(1, 6))
     
     recommendation = case_data.get('recommendation', "Clinical correlation required.")
-    elements.append(Paragraph(f"<b>Urgency Level:</b> {case_item_severity if (case_item_severity := case_data.get('severity')) else 'Standard'}", styles['Normal']))
+    severity_val = case_data.get('severity', 'Standard')
+    elements.append(Paragraph(f"<b>Urgency Level:</b> {severity_val}", styles['Normal']))
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(f"<b>Recommendation:</b> {recommendation}", styles['Normal']))
     
